@@ -1,0 +1,6 @@
+[package]
+name = "elixir_parser"
+version = "0.1.0"
+authors = ["Gabe Durazo <gabe@durazo.us>"]
+
+[dependencies]
