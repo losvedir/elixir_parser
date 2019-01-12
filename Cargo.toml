@@ -3,4 +3,10 @@ name = "elixir_parser"
 version = "0.1.0"
 authors = ["Gabe Durazo <gabe@durazo.us>"]
 
+[build-dependencies]
+lalrpop = "0.16.2"
+
 [dependencies]
+lalrpop-util = "0.16.2"
+regex = "0.2.0"
+itertools = "0.8"
