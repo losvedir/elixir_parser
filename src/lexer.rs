@@ -33,12 +33,7 @@ impl<'input> Iterator for Lexer<'input> {
                 if self.match7('<', '<', '<', '<', '<', '<', '<') {
                     loop {
                         match &self.chars.next() {
-                            Some('\n') => {
-                                self.col = 0;
-                                self.line += 1;
-                                break
-                            }
-                            Some('\r') => {
+                            Some('\n') | Some('\r') => {
                                 self.col = 0;
                                 self.line += 1;
                                 break
@@ -68,8 +63,8 @@ impl<'input> Iterator for Lexer<'input> {
 
 impl<'input> Lexer<'input> {
     fn match1(&mut self, c1: char) -> bool {
-        if &self.chars.peek() == &Some(&c1) {
-            &self.chars.next();
+        if self.chars.peek() == Some(&c1) {
+            self.chars.next();
             self.col += 1;
             true
         } else {
@@ -78,20 +73,20 @@ impl<'input> Lexer<'input> {
     }
 
     fn match7(&mut self, c1: char, c2: char, c3: char, c4: char, c5: char, c6: char, c7: char) -> bool {
-        if &self.chars.peek() == &Some(&c1) &&
-                &self.chars.peek() == &Some(&c2) &&
-                &self.chars.peek() == &Some(&c3) &&
-                &self.chars.peek() == &Some(&c4) &&
-                &self.chars.peek() == &Some(&c5) &&
-                &self.chars.peek() == &Some(&c6) &&
-                &self.chars.peek() == &Some(&c7) {
+        if self.chars.peek() == Some(&c1) &&
+                self.chars.peek() == Some(&c2) &&
+                self.chars.peek() == Some(&c3) &&
+                self.chars.peek() == Some(&c4) &&
+                self.chars.peek() == Some(&c5) &&
+                self.chars.peek() == Some(&c6) &&
+                self.chars.peek() == Some(&c7) {
             for _ in 1..7 {
-                &self.chars.next();
+                self.chars.next();
             }
             self.col += 7;
             true
         } else {
-            &self.chars.reset_peek();
+            self.chars.reset_peek();
             false
         }
     }
