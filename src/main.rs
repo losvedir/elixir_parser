@@ -1,4 +1,5 @@
-#[macro_use] extern crate lalrpop_util;
+#[macro_use]
+extern crate lalrpop_util;
 extern crate itertools;
 lalrpop_mod!(pub elixir); // synthesized by LALRPOP
 

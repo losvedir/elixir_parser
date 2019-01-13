@@ -3,12 +3,12 @@ pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
     Int,
-    Star
+    Star,
 }
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LexicalError {
-    VersionControlMarker
+    VersionControlMarker,
 }
 
 pub struct Lexer<'input> {
@@ -19,7 +19,11 @@ pub struct Lexer<'input> {
 
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
-        Lexer { chars: itertools::multipeek(input.chars()), line: 0, col: 0 }
+        Lexer {
+            chars: itertools::multipeek(input.chars()),
+            line: 0,
+            col: 0,
+        }
     }
 }
 
@@ -36,20 +40,29 @@ impl<'input> Iterator for Lexer<'input> {
                             Some('\n') | Some('\r') => {
                                 self.col = 0;
                                 self.line += 1;
-                                break
+                                break;
                             }
                             None => {
                                 self.col += 1;
-                                break
+                                break;
                             }
                             _ => {
                                 self.col += 1;
-                                continue
+                                continue;
                             }
                         }
                     }
                     return Some(Err(LexicalError::VersionControlMarker));
                 }
+            }
+
+            // Base integers
+
+            if self.chars.peek() == Some(&'0')
+                && self.chars.peek() == Some(&'x')
+                && is_hex(self.chars.peek())
+            {
+                return None;
             }
 
             if self.match1('*') {
@@ -58,6 +71,16 @@ impl<'input> Iterator for Lexer<'input> {
 
             return None;
         }
+    }
+}
+
+fn is_hex(c: Option<&char>) -> bool {
+    match c {
+        Some('0') | Some('1') | Some('2') | Some('3') | Some('4') | Some('5') | Some('6')
+        | Some('7') | Some('8') | Some('9') | Some('a') | Some('A') | Some('b') | Some('B')
+        | Some('c') | Some('C') | Some('d') | Some('D') | Some('e') | Some('E') | Some('f')
+        | Some('F') => true,
+        _ => false,
     }
 }
 
@@ -72,14 +95,24 @@ impl<'input> Lexer<'input> {
         }
     }
 
-    fn match7(&mut self, c1: char, c2: char, c3: char, c4: char, c5: char, c6: char, c7: char) -> bool {
-        if self.chars.peek() == Some(&c1) &&
-                self.chars.peek() == Some(&c2) &&
-                self.chars.peek() == Some(&c3) &&
-                self.chars.peek() == Some(&c4) &&
-                self.chars.peek() == Some(&c5) &&
-                self.chars.peek() == Some(&c6) &&
-                self.chars.peek() == Some(&c7) {
+    fn match7(
+        &mut self,
+        c1: char,
+        c2: char,
+        c3: char,
+        c4: char,
+        c5: char,
+        c6: char,
+        c7: char,
+    ) -> bool {
+        if self.chars.peek() == Some(&c1)
+            && self.chars.peek() == Some(&c2)
+            && self.chars.peek() == Some(&c3)
+            && self.chars.peek() == Some(&c4)
+            && self.chars.peek() == Some(&c5)
+            && self.chars.peek() == Some(&c6)
+            && self.chars.peek() == Some(&c7)
+        {
             for _ in 1..7 {
                 self.chars.next();
             }
