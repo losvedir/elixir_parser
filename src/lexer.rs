@@ -55,19 +55,23 @@ impl<'input> Iterator for Lexer<'input> {
                     return Some(Err(LexicalError::VersionControlMarker));
                 }
             }
+            self.chars.reset_peek();
 
             // Base integers
 
-            if self.chars.peek() == Some(&'0')
-                && self.chars.peek() == Some(&'x')
-                && is_hex(self.chars.peek())
+            if self.match_char('0')
+                && self.match_char('x')
+                && self.match_fn(&is_hex)
             {
                 return None;
             }
+            self.chars.reset_peek();
 
-            if self.match1('*') {
+            if self.match_char('*') {
+                self.consume(1);
                 return Some(Ok((1, Tok::Star, 1)));
             }
+            self.chars.reset_peek();
 
             return None;
         }
@@ -85,14 +89,19 @@ fn is_hex(c: Option<&char>) -> bool {
 }
 
 impl<'input> Lexer<'input> {
-    fn match1(&mut self, c1: char) -> bool {
-        if self.chars.peek() == Some(&c1) {
+    fn consume(&mut self, n: u32) {
+        for _ in 0..n {
             self.chars.next();
-            self.col += 1;
-            true
-        } else {
-            false
         }
+        self.col += n;
+    }
+
+    fn match_char(&mut self, c: char) -> bool {
+        self.chars.peek() == Some(&c)
+    }
+
+    fn match_fn(&mut self, f: &Fn(Option<&char>) -> bool) -> bool {
+        f(self.chars.peek())
     }
 
     fn match7(
@@ -131,4 +140,28 @@ fn lex1() {
     assert!(lexer.next() == Some(Err(LexicalError::VersionControlMarker)));
     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
     assert!(lexer.next() == None);
+}
+
+#[test]
+fn consume() {
+    let mut lexer = Lexer::new("123456");
+    assert!(lexer.chars.peek() == Some(&'1'));
+    lexer.chars.reset_peek();
+    lexer.consume(2);
+    assert!(lexer.chars.peek() == Some(&'3'));
+    lexer.consume(2);
+    assert!(lexer.chars.peek() == Some(&'5'));
+}
+
+#[test]
+fn match_char() {
+    let mut lexer = Lexer::new("abc");
+    assert!(lexer.match_char('a'));
+    assert!(lexer.match_char('b'));
+}
+
+#[test]
+fn match_fn() {
+    let mut lexer = Lexer::new("abc");
+    assert!(lexer.match_fn(&|ch| ch == Some(&'a')));
 }
