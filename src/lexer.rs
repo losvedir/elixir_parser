@@ -33,8 +33,15 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // VC Merge Conflict
-            if self.col == 0 {
-                if self.match7('<', '<', '<', '<', '<', '<', '<') {
+            if self.col == 0 
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('<') {
+                    self.consume(7);
                     loop {
                         match &self.chars.next() {
                             Some('\n') | Some('\r') => {
@@ -53,7 +60,6 @@ impl<'input> Iterator for Lexer<'input> {
                         }
                     }
                     return Some(Err(LexicalError::VersionControlMarker));
-                }
             }
             self.chars.reset_peek();
 
@@ -102,35 +108,6 @@ impl<'input> Lexer<'input> {
 
     fn match_fn(&mut self, f: &Fn(Option<&char>) -> bool) -> bool {
         f(self.chars.peek())
-    }
-
-    fn match7(
-        &mut self,
-        c1: char,
-        c2: char,
-        c3: char,
-        c4: char,
-        c5: char,
-        c6: char,
-        c7: char,
-    ) -> bool {
-        if self.chars.peek() == Some(&c1)
-            && self.chars.peek() == Some(&c2)
-            && self.chars.peek() == Some(&c3)
-            && self.chars.peek() == Some(&c4)
-            && self.chars.peek() == Some(&c5)
-            && self.chars.peek() == Some(&c6)
-            && self.chars.peek() == Some(&c7)
-        {
-            for _ in 1..7 {
-                self.chars.next();
-            }
-            self.col += 7;
-            true
-        } else {
-            self.chars.reset_peek();
-            false
-        }
     }
 }
 
