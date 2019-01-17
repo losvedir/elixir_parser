@@ -1,8 +1,13 @@
+use itertools::Itertools;
+use num_bigint::BigInt;
+use num_bigint::ToBigInt;
+use num_traits::Num;
+
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
-    Int,
+    Int(BigInt),
     Star,
 }
 
@@ -33,33 +38,34 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // VC Merge Conflict
-            if self.col == 0 
+            if self.col == 0
                 && self.match_char('<')
                 && self.match_char('<')
                 && self.match_char('<')
                 && self.match_char('<')
                 && self.match_char('<')
                 && self.match_char('<')
-                && self.match_char('<') {
-                    self.consume(7);
-                    loop {
-                        match &self.chars.next() {
-                            Some('\n') | Some('\r') => {
-                                self.col = 0;
-                                self.line += 1;
-                                break;
-                            }
-                            None => {
-                                self.col += 1;
-                                break;
-                            }
-                            _ => {
-                                self.col += 1;
-                                continue;
-                            }
+                && self.match_char('<')
+            {
+                self.consume(7);
+                loop {
+                    match &self.chars.next() {
+                        Some('\n') | Some('\r') => {
+                            self.col = 0;
+                            self.line += 1;
+                            break;
+                        }
+                        None => {
+                            self.col += 1;
+                            break;
+                        }
+                        _ => {
+                            self.col += 1;
+                            continue;
                         }
                     }
-                    return Some(Err(LexicalError::VersionControlMarker));
+                }
+                return Some(Err(LexicalError::VersionControlMarker));
             }
             self.chars.reset_peek();
 
@@ -67,12 +73,42 @@ impl<'input> Iterator for Lexer<'input> {
 
             if self.match_char('0')
                 && self.match_char('x')
-                && self.match_fn(&is_hex)
+                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(16)))
             {
-                return None;
+                self.consume(2);
+
+                let digits: String = self.chars.take_while_ref(|c| c.is_digit(16)).collect();
+                self.col += digits.len() as u32;
+                let val: BigInt = BigInt::from_str_radix(&digits, 16).unwrap();
+                return Some(Ok((1, Tok::Int(val), 1)));
             }
             self.chars.reset_peek();
 
+            if self.match_char('0')
+                && self.match_char('b')
+                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(2)))
+            {
+                self.consume(2);
+                let digits: String = self.chars.take_while_ref(|c| c.is_digit(2)).collect();
+                self.col += digits.len() as u32;
+                let val: BigInt = BigInt::from_str_radix(&digits, 2).unwrap();
+                return Some(Ok((1, Tok::Int(val), 1)));
+            }
+            self.chars.reset_peek();
+
+            if self.match_char('0')
+                && self.match_char('o')
+                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(8)))
+            {
+                self.consume(2);
+                let digits: String = self.chars.take_while_ref(|c| c.is_digit(8)).collect();
+                self.col += digits.len() as u32;
+                let val: BigInt = BigInt::from_str_radix(&digits, 8).unwrap();
+                return Some(Ok((1, Tok::Int(val), 1)));
+            }
+            self.chars.reset_peek();
+
+            // flag for testing
             if self.match_char('*') {
                 self.consume(1);
                 return Some(Ok((1, Tok::Star, 1)));
@@ -84,22 +120,13 @@ impl<'input> Iterator for Lexer<'input> {
     }
 }
 
-fn is_hex(c: Option<&char>) -> bool {
-    match c {
-        Some('0') | Some('1') | Some('2') | Some('3') | Some('4') | Some('5') | Some('6')
-        | Some('7') | Some('8') | Some('9') | Some('a') | Some('A') | Some('b') | Some('B')
-        | Some('c') | Some('C') | Some('d') | Some('D') | Some('e') | Some('E') | Some('f')
-        | Some('F') => true,
-        _ => false,
-    }
-}
-
 impl<'input> Lexer<'input> {
     fn consume(&mut self, n: u32) {
         for _ in 0..n {
             self.chars.next();
         }
         self.col += n;
+        self.chars.reset_peek();
     }
 
     fn match_char(&mut self, c: char) -> bool {
@@ -117,6 +144,17 @@ fn lex1() {
     assert!(lexer.next() == Some(Err(LexicalError::VersionControlMarker)));
     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
     assert!(lexer.next() == None);
+}
+
+#[test]
+fn lex2() {
+    let mut lexer = Lexer::new("0xf1A*0b110*0o73*");
+    assert!(lexer.next() == Some(Ok((1, Tok::Int(0xf1a.to_bigint().unwrap()), 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Int(0b110.to_bigint().unwrap()), 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Int(0o73.to_bigint().unwrap()), 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
 }
 
 #[test]
