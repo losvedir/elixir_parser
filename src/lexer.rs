@@ -48,23 +48,7 @@ impl<'input> Iterator for Lexer<'input> {
                 && self.match_char('<')
             {
                 self.consume(7);
-                loop {
-                    match &self.chars.next() {
-                        Some('\n') | Some('\r') => {
-                            self.col = 0;
-                            self.line += 1;
-                            break;
-                        }
-                        None => {
-                            self.col += 1;
-                            break;
-                        }
-                        _ => {
-                            self.col += 1;
-                            continue;
-                        }
-                    }
-                }
+                self.consume_to_eol();
                 return Some(Err(LexicalError::VersionControlMarker));
             }
             self.chars.reset_peek();
@@ -108,6 +92,15 @@ impl<'input> Iterator for Lexer<'input> {
             }
             self.chars.reset_peek();
 
+            // comments
+
+            if self.match_char('#') {
+                self.consume(1);
+                self.consume_to_eol();
+                continue;
+            }
+            self.chars.reset_peek();
+
             // flag for testing
             if self.match_char('*') {
                 self.consume(1);
@@ -127,6 +120,26 @@ impl<'input> Lexer<'input> {
         }
         self.col += n;
         self.chars.reset_peek();
+    }
+
+    fn consume_to_eol(&mut self) {
+        loop {
+            match &self.chars.next() {
+                Some('\n') => {
+                    self.col = 0;
+                    self.line += 1;
+                    break;
+                }
+                None => {
+                    self.col += 1;
+                    break;
+                }
+                _ => {
+                    self.col += 1;
+                    continue;
+                }
+            }
+        }
     }
 
     fn match_char(&mut self, c: char) -> bool {
@@ -154,6 +167,12 @@ fn lex2() {
     assert!(lexer.next() == Some(Ok((1, Tok::Int(0b110.to_bigint().unwrap()), 1))));
     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
     assert!(lexer.next() == Some(Ok((1, Tok::Int(0o73.to_bigint().unwrap()), 1))));
+    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+}
+
+#[test]
+fn lex3() {
+    let mut lexer = Lexer::new("# this is a comment\n*");
     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
 }
 
