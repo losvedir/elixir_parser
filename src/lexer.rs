@@ -7,6 +7,7 @@ pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
+    Char(char),
     Int(BigInt),
     Star,
 }
@@ -14,6 +15,7 @@ pub enum Tok {
 #[derive(Clone, PartialEq, Debug)]
 pub enum LexicalError {
     VersionControlMarker,
+    InvalidSigil,
 }
 
 pub struct Lexer<'input> {
@@ -38,6 +40,7 @@ impl<'input> Iterator for Lexer<'input> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             // VC Merge Conflict
+            // tokenize(("<<<<<<<" ++ _) = Original, Line, 1, _Scope, Tokens) ->
             if self.col == 0
                 && self.match_char('<')
                 && self.match_char('<')
@@ -54,7 +57,7 @@ impl<'input> Iterator for Lexer<'input> {
             self.chars.reset_peek();
 
             // Base integers
-
+            // tokenize([$0, $x, H | T], Line, Column, Scope, Tokens) when ?is_hex(H) ->
             if self.match_char('0')
                 && self.match_char('x')
                 && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(16)))
@@ -68,6 +71,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
             self.chars.reset_peek();
 
+            // tokenize([$0, $b, H | T], Line, Column, Scope, Tokens) when ?is_bin(H) ->
             if self.match_char('0')
                 && self.match_char('b')
                 && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(2)))
@@ -80,6 +84,7 @@ impl<'input> Iterator for Lexer<'input> {
             }
             self.chars.reset_peek();
 
+            // tokenize([$0, $o, H | T], Line, Column, Scope, Tokens) when ?is_octal(H) ->
             if self.match_char('0')
                 && self.match_char('o')
                 && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(8)))
@@ -92,12 +97,85 @@ impl<'input> Iterator for Lexer<'input> {
             }
             self.chars.reset_peek();
 
-            // comments
+            // Comments
 
+            // tokenize([$# | String], Line, Column, Scope, Tokens) ->
             if self.match_char('#') {
                 self.consume(1);
                 self.consume_to_eol();
                 continue;
+            }
+            self.chars.reset_peek();
+
+            // Sigils
+
+            // tokenize([$~, S, H, H, H | T] = Original, Line, Column, Scope, Tokens) when ?is_quote(H), ?is_upcase(S) orelse ?is_downcase(S) ->
+            if self.match_char('~') {
+                if let Some(&s) = &self.chars.peek() {
+                    if let Some(&h1) = &self.chars.peek() {
+                        if let Some(&h2) = &self.chars.peek() {
+                            if let Some(&h3) = &self.chars.peek() {
+                                if s.is_ascii_alphabetic()
+                                    && is_quote(&h1)
+                                    && is_quote(&h2)
+                                    && is_quote(&h3)
+                                    && h1 == h2
+                                    && h2 == h3
+                                {
+                                    self.consume(5);
+                                    // TODO: extract_heredoc_with_interpolation...
+                                    return None;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            self.chars.reset_peek();
+
+            // tokenize([$~, S, H | T] = Original, Line, Column, Scope, Tokens) when ?is_sigil(H), ?is_upcase(S) orelse ?is_downcase(S) ->
+            if self.match_char('~') {
+                if let Some(&s) = &self.chars.peek() {
+                    if let Some(&h) = &self.chars.peek() {
+                        if s.is_ascii_alphabetic() && is_sigil(&h) {
+                            self.consume(3);
+                            // TODO: elixir_interpolation:extract
+                            return None;
+                        }
+                    }
+                }
+            }
+            self.chars.reset_peek();
+
+            // tokenize([$~, S, H | _] = Original, Line, Column, _Scope, Tokens) when ?is_upcase(S) orelse ?is_downcase(S) ->
+            if self.match_char('~') {
+                if let Some(&s) = &self.chars.peek() {
+                    if let Some(&_h) = &self.chars.peek() {
+                        if s.is_ascii_alphabetic() {
+                            self.consume(3);
+                            return Some(Err(LexicalError::InvalidSigil));
+                        }
+                    }
+                }
+            }
+            self.chars.reset_peek();
+
+            // Char tokens
+            // tokenize([$?, $\\, H | T], Line, Column, Scope, Tokens) ->
+            if self.match_char('?') && self.match_char('\\') {
+                if let Some(&_h) = self.chars.peek() {
+                    // TODO: elixir_interpolation:unescape_map(H)
+                    // return Tok::Char..
+                    return None;
+                }
+            }
+            self.chars.reset_peek();
+
+            // tokenize([$?, Char | T], Line, Column, Scope, Tokens) ->
+            if self.match_char('?') {
+                if let Some(&ch) = self.chars.peek() {
+                    return Some(Ok((1, Tok::Char(ch), 1)));
+                }
             }
             self.chars.reset_peek();
 
@@ -148,6 +226,20 @@ impl<'input> Lexer<'input> {
 
     fn match_fn(&mut self, f: &Fn(Option<&char>) -> bool) -> bool {
         f(self.chars.peek())
+    }
+}
+
+fn is_quote(c: &char) -> bool {
+    match c {
+        '\'' | '"' => true,
+        _ => false,
+    }
+}
+
+fn is_sigil(c: &char) -> bool {
+    match c {
+        '/' | '<' | '"' | '\'' | '[' | '(' | '{' | '|' => true,
+        _ => false,
     }
 }
 
