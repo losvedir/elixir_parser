@@ -7,8 +7,10 @@ pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
+    Atom(String),
     Char(char),
     Int(BigInt),
+    KwIdentifier(String),
     Star,
 }
 
@@ -58,9 +60,7 @@ impl<'input> Iterator for Lexer<'input> {
 
             // Base integers
             // tokenize([$0, $x, H | T], Line, Column, Scope, Tokens) when ?is_hex(H) ->
-            if self.match_char('0')
-                && self.match_char('x')
-                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(16)))
+            if self.match_char('0') && self.match_char('x') && self.match_fn(&|ch| ch.is_digit(16))
             {
                 self.consume(2);
 
@@ -72,10 +72,7 @@ impl<'input> Iterator for Lexer<'input> {
             self.chars.reset_peek();
 
             // tokenize([$0, $b, H | T], Line, Column, Scope, Tokens) when ?is_bin(H) ->
-            if self.match_char('0')
-                && self.match_char('b')
-                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(2)))
-            {
+            if self.match_char('0') && self.match_char('b') && self.match_fn(&|ch| ch.is_digit(2)) {
                 self.consume(2);
                 let digits: String = self.chars.take_while_ref(|c| c.is_digit(2)).collect();
                 self.col += digits.len() as u32;
@@ -85,10 +82,7 @@ impl<'input> Iterator for Lexer<'input> {
             self.chars.reset_peek();
 
             // tokenize([$0, $o, H | T], Line, Column, Scope, Tokens) when ?is_octal(H) ->
-            if self.match_char('0')
-                && self.match_char('o')
-                && self.match_fn(&|c| c.map_or(false, |ch| ch.is_digit(8)))
-            {
+            if self.match_char('0') && self.match_char('o') && self.match_fn(&|ch| ch.is_digit(8)) {
                 self.consume(2);
                 let digits: String = self.chars.take_while_ref(|c| c.is_digit(8)).collect();
                 self.col += digits.len() as u32;
@@ -179,6 +173,150 @@ impl<'input> Iterator for Lexer<'input> {
             }
             self.chars.reset_peek();
 
+            // Heredocs
+
+            // tokenize("\"\"\"" ++ T, Line, Column, Scope, Tokens) ->
+            if self.match_char('"') && self.match_char('"') && self.match_char('"') {
+                self.consume(3);
+                // TODO: andle_heredocs(T, Line, Column, $", Scope, Tokens);
+                return None;
+            }
+            self.chars.reset_peek();
+
+            // tokenize("'''" ++ T, Line, Column, Scope, Tokens) ->
+            if self.match_char('\'') && self.match_char('\'') && self.match_char('\'') {
+                self.consume(3);
+                // TODO: handle_heredocs(T, Line, Column, $', Scope, Tokens);
+            }
+            self.chars.reset_peek();
+
+            // Strings
+
+            // tokenize([$" | T], Line, Column, Scope, Tokens) ->
+            if self.match_char('"') {
+                self.consume(1);
+                // TODO: handle_strings(T, Line, Column + 1, $", Scope, Tokens);
+            }
+            self.chars.reset_peek();
+
+            // tokenize([$' | T], Line, Column, Scope, Tokens) ->
+            if self.match_char('\'') {
+                self.consume(1);
+                // TODO: handle_strings(T, Line, Column + 1, $', Scope, Tokens);
+            }
+            self.chars.reset_peek();
+
+            // Operator atoms
+
+            // tokenize("...:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
+            if self.match_char('.')
+                && self.match_char('.')
+                && self.match_char('.')
+                && self.match_char(':')
+                && self.match_fn(&|c| is_space(c))
+            {
+                self.consume(4);
+                return Some(Ok((1, Tok::KwIdentifier("...".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize("<<>>:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
+            if self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('>')
+                && self.match_char('>')
+                && self.match_char(':')
+                && self.match_fn(&|c| is_space(c))
+            {
+                self.consume(5);
+                return Some(Ok((1, Tok::KwIdentifier("<<>>".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize("%{}:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
+            if self.match_char('%')
+                && self.match_char('{')
+                && self.match_char('}')
+                && self.match_char(':')
+                && self.match_fn(&|c| is_space(c))
+            {
+                self.consume(4);
+                return Some(Ok((1, Tok::KwIdentifier("%{}".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize("%:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
+            if self.match_char('%') && self.match_char(':') && self.match_fn(&|c| is_space(c)) {
+                self.consume(2);
+                return Some(Ok((1, Tok::KwIdentifier("%".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize("{}:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
+            if self.match_char('{')
+                && self.match_char('}')
+                && self.match_char(':')
+                && self.match_fn(&|c| is_space(c))
+            {
+                self.consume(3);
+                return Some(Ok((1, Tok::KwIdentifier("{}".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize(":..." ++ Rest, Line, Column, Scope, Tokens) ->
+            if self.match_char(':')
+                && self.match_char('.')
+                && self.match_char('.')
+                && self.match_char('.')
+            {
+                self.consume(4);
+                return Some(Ok((1, Tok::Atom("...".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize(":<<>>" ++ Rest, Line, Column, Scope, Tokens) ->
+            if self.match_char(':')
+                && self.match_char('<')
+                && self.match_char('<')
+                && self.match_char('>')
+                && self.match_char('>')
+            {
+                self.consume(5);
+                return Some(Ok((1, Tok::Atom("<<>>".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize(":%{}" ++ Rest, Line, Column, Scope, Tokens) ->
+            if self.match_char(':')
+                && self.match_char('%')
+                && self.match_char('{')
+                && self.match_char('}')
+            {
+                self.consume(4);
+                return Some(Ok((1, Tok::Atom("%{}".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize(":%" ++ Rest, Line, Column, Scope, Tokens) ->
+            if self.match_char(':') && self.match_char('%') {
+                self.consume(2);
+                return Some(Ok((1, Tok::Atom("%".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // tokenize(":{}" ++ Rest, Line, Column, Scope, Tokens) ->
+            if self.match_char(':') && self.match_char('{') && self.match_char('}') {
+                self.consume(3);
+                return Some(Ok((1, Tok::Atom("{}".to_string()), 1)));
+            }
+            self.chars.reset_peek();
+
+            // Three Token Operators
+
+            // tokenize([$:, T1, T2, T3 | Rest], Line, Column, Scope, Tokens) when
+            // ?unary_op3(T1, T2, T3); ?comp_op3(T1, T2, T3); ?and_op3(T1, T2, T3); ?or_op3(T1, T2, T3);
+            // ?arrow_op3(T1, T2, T3); ?three_op(T1, T2, T3) ->
+
             // flag for testing
             if self.match_char('*') {
                 self.consume(1);
@@ -224,24 +362,57 @@ impl<'input> Lexer<'input> {
         self.chars.peek() == Some(&c)
     }
 
-    fn match_fn(&mut self, f: &Fn(Option<&char>) -> bool) -> bool {
-        f(self.chars.peek())
+    fn match_fn(&mut self, f: &Fn(&char) -> bool) -> bool {
+        self.chars.peek().map_or(false, |c| f(c))
     }
 }
 
 fn is_quote(c: &char) -> bool {
-    match c {
-        '\'' | '"' => true,
-        _ => false,
-    }
+    c == &'\'' || c == &'"'
 }
 
 fn is_sigil(c: &char) -> bool {
-    match c {
-        '/' | '<' | '"' | '\'' | '[' | '(' | '{' | '|' => true,
-        _ => false,
-    }
+    c == &'/'
+        || c == &'<'
+        || c == &'"'
+        || c == &'\''
+        || c == &'['
+        || c == &'('
+        || c == &'{'
+        || c == &'|'
 }
+
+fn is_horizontal_space(s: &char) -> bool {
+    s == &' ' || s == &'\t'
+}
+
+fn is_vertical_space(s: &char) -> bool {
+    s == &'\r' || s == &'\n'
+}
+
+fn is_space(s: &char) -> bool {
+    is_horizontal_space(s) || is_vertical_space(s)
+}
+
+fn is_unary_op3(t1: &char, t2: &char, t3: &char) -> bool {
+    t1 == &'~' && t2 == &'~' && t3 == &'~'
+}
+
+fn is_comp_op3(t1: &char, t2: &char, t3: &char) -> bool {
+    (t1 == &'=' && t2 == &'=' && t3 == &'=') || (t1 == &'!' && t2 == &'=' && t3 == &'=')
+}
+
+fn is_and_op3(t1: &char, t2: &char, t3: &char) -> bool {
+    t1 == &'&' && t2 == &'&' && t3 == &'&'
+}
+
+fn is_or_op3(t1: &char, t2: &char, t3: &char) -> bool {
+    t1 == &'|' && t2 == &'|' && t3 == &'|'
+}
+
+fn is_arrow_op3(t1: &char, t2: &char, t3: &char) -> bool {}
+
+fn is_three_op(t1: &char, t2: &char, t3: &char) -> bool {}
 
 #[test]
 fn lex1() {
@@ -289,5 +460,5 @@ fn match_char() {
 #[test]
 fn match_fn() {
     let mut lexer = Lexer::new("abc");
-    assert!(lexer.match_fn(&|ch| ch == Some(&'a')));
+    assert!(lexer.match_fn(&|ch| ch == &'a'));
 }
