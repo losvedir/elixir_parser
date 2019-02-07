@@ -316,6 +316,87 @@ impl<'input> Iterator for Lexer<'input> {
             // tokenize([$:, T1, T2, T3 | Rest], Line, Column, Scope, Tokens) when
             // ?unary_op3(T1, T2, T3); ?comp_op3(T1, T2, T3); ?and_op3(T1, T2, T3); ?or_op3(T1, T2, T3);
             // ?arrow_op3(T1, T2, T3); ?three_op(T1, T2, T3) ->
+            if self.match_char(':') {
+                if let Some(&t1) = self.chars.peek() {
+                    if let Some(&t2) = self.chars.peek() {
+                        if let Some(&t3) = self.chars.peek() {
+                            if is_unary_op3(&t1, &t2, &t3)
+                                || is_comp_op3(&t1, &t2, &t3)
+                                || is_and_op3(&t1, &t2, &t3)
+                                || is_or_op3(&t1, &t2, &t3)
+                                || is_arrow_op3(&t1, &t2, &t3)
+                                || is_three_op(&t1, &t2, &t3)
+                            {
+                                self.consume(4);
+                                return Some(Ok((
+                                    (self.col - 4) as usize,
+                                    Tok::Atom([t1, t2, t3].into_iter().collect()),
+                                    self.col as usize,
+                                )));
+                            }
+                        }
+                    }
+                }
+            }
+            self.chars.reset_peek();
+
+            // Two Token Operators
+            // tokenize([$:, T1, T2 | Rest], Line, Column, Scope, Tokens) when
+            //     ?comp_op2(T1, T2); ?rel_op2(T1, T2); ?and_op(T1, T2); ?or_op(T1, T2);
+            //     ?arrow_op(T1, T2); ?in_match_op(T1, T2); ?two_op(T1, T2); ?list_op(T1, T2);
+            // ?stab_op(T1, T2); ?type_op(T1, T2) ->
+            if self.match_char(':') {
+                if let Some(&t1) = self.chars.peek() {
+                    if let Some(&t2) = self.chars.peek() {
+                        if is_comp_op2(&t1, &t2)
+                            || is_rel_op2(&t1, &t2)
+                            || is_and_op(&t1, &t2)
+                            || is_or_op(&t1, &t2)
+                            || is_arrow_op(&t1, &t2)
+                            || is_in_match_op(&t1, &t2)
+                            || is_two_op(&t1, &t2)
+                            || is_list_op(&t1, &t2)
+                            || is_stab_op(&t1, &t2)
+                            || is_type_op(&t1, &t2)
+                        {
+                            self.consume(3);
+                            return Some(Ok((
+                                (self.col - 3) as usize,
+                                Tok::Atom([t1, t2].into_iter().collect()),
+                                self.col as usize,
+                            )));
+                        }
+                    }
+                }
+            }
+            self.chars.reset_peek();
+
+            //  ## Single Token Operators
+            // tokenize([$:, T | Rest], Line, Column, Scope, Tokens) when
+            //     ?at_op(T); ?unary_op(T); ?capture_op(T); ?dual_op(T); ?mult_op(T);
+            // ?rel_op(T); ?match_op(T); ?pipe_op(T); T == $. ->
+            if self.match_char(':') {
+                if let Some(&t) = self.chars.peek() {
+                    if is_at_op(&t)
+                        || is_unary_op(&t)
+                        || is_capture_op(&t)
+                        || is_dual_op(&t)
+                        || is_mult_op(&t)
+                        || is_rel_op(&t)
+                        || is_match_op(&t)
+                        || is_pipe_op(&t)
+                        || &t == &'.'
+                    {
+                        self.consume(2);
+                        return Some(Ok((
+                            (self.col - 2) as usize,
+                            Tok::Atom([t].into_iter().collect()),
+                            self.col as usize,
+                        )));
+                    }
+                }
+            }
+            self.chars.reset_peek();
 
             // flag for testing
             if self.match_char('*') {
@@ -394,6 +475,46 @@ fn is_space(s: &char) -> bool {
     is_horizontal_space(s) || is_vertical_space(s)
 }
 
+fn is_comp_op2(t1: &char, t2: &char) -> bool {
+    (t1 == &'=' && t2 == &'=') || (t1 == &'=' && t2 == &'~') || (t1 == &'!' && t2 == &'=')
+}
+
+fn is_rel_op2(t1: &char, t2: &char) -> bool {
+    (t1 == &'<' && t2 == &'=') || (t1 == &'>' && t2 == &'~')
+}
+
+fn is_and_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'&' && t2 == &'&')
+}
+
+fn is_or_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'|' && t2 == &'|')
+}
+
+fn is_arrow_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'|' && t2 == &'>') || (t1 == &'~' && t2 == &'>') || (t1 == &'<' && t2 == &'~')
+}
+
+fn is_in_match_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'<' && t2 == &'-') || (t1 == &'\\' && t2 == &'\\')
+}
+
+fn is_two_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'<' && t2 == &'>') || (t1 == &'.' && t2 == &'.')
+}
+
+fn is_list_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'+' && t2 == &'+') || (t1 == &'-' && t2 == &'-')
+}
+
+fn is_stab_op(t1: &char, t2: &char) -> bool {
+    (t1 == &'-' && t2 == &'>')
+}
+
+fn is_type_op(t1: &char, t2: &char) -> bool {
+    (t1 == &':' && t2 == &':')
+}
+
 fn is_unary_op3(t1: &char, t2: &char, t3: &char) -> bool {
     t1 == &'~' && t2 == &'~' && t3 == &'~'
 }
@@ -410,9 +531,50 @@ fn is_or_op3(t1: &char, t2: &char, t3: &char) -> bool {
     t1 == &'|' && t2 == &'|' && t3 == &'|'
 }
 
-fn is_arrow_op3(t1: &char, t2: &char, t3: &char) -> bool {}
+fn is_arrow_op3(t1: &char, t2: &char, t3: &char) -> bool {
+    (t1 == &'<' && t2 == &'<' && t3 == &'<')
+        || (t1 == &'>' && t2 == &'>' && t3 == &'>')
+        || (t1 == &'~' && t2 == &'>' && t3 == &'>')
+        || (t1 == &'<' && t2 == &'<' && t3 == &'~')
+        || (t1 == &'<' && t2 == &'~' && t3 == &'>')
+        || (t1 == &'<' && t2 == &'|' && t3 == &'>')
+}
 
-fn is_three_op(t1: &char, t2: &char, t3: &char) -> bool {}
+fn is_three_op(t1: &char, t2: &char, t3: &char) -> bool {
+    t1 == &'^' && t2 == &'^' && t3 == &'^'
+}
+
+fn is_at_op(t: &char) -> bool {
+    t == &'@'
+}
+
+fn is_unary_op(t: &char) -> bool {
+    t == &'!' || t == &'^'
+}
+
+fn is_capture_op(t: &char) -> bool {
+    t == &'&'
+}
+
+fn is_dual_op(t: &char) -> bool {
+    t == &'+' || t == &'-'
+}
+
+fn is_mult_op(t: &char) -> bool {
+    t == &'*' || t == &'/'
+}
+
+fn is_rel_op(t: &char) -> bool {
+    t == &'<' || t == &'>'
+}
+
+fn is_match_op(t: &char) -> bool {
+    t == &'='
+}
+
+fn is_pipe_op(t: &char) -> bool {
+    t == &'|'
+}
 
 #[test]
 fn lex1() {
