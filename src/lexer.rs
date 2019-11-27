@@ -1,38 +1,81 @@
-use itertools::Itertools;
-use num_bigint::BigInt;
-use num_bigint::ToBigInt;
-use num_traits::Num;
-
+use std::str::Chars;
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
-    Atom(String),
-    Char(char),
-    Int(BigInt),
-    KwIdentifier(String),
-    Star,
+    Def,
+    Defmodule,
+    Defp,
+    Do,
+    End,
+    ModName { name: String },
+    FuncName { name: String },
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub enum LexicalError {
-    VersionControlMarker,
-    InvalidSigil,
-}
+pub enum LexicalError {}
 
+#[derive(Debug)]
 pub struct Lexer<'input> {
-    chars: itertools::MultiPeek<std::str::Chars<'input>>,
-    line: u32,
-    col: u32,
+    chars: Chars<'input>,
+    c0: Option<char>,
+    c1: Option<char>,
+    c2: Option<char>,
+    c3: Option<char>,
+    c4: Option<char>,
+    c5: Option<char>,
+    c6: Option<char>,
+    c7: Option<char>,
+    c8: Option<char>,
+    position: usize,
 }
 
 impl<'input> Lexer<'input> {
     pub fn new(input: &'input str) -> Self {
+        let mut chars = input.chars();
+        let c0 = chars.next();
+        let c1 = chars.next();
+        let c2 = chars.next();
+        let c3 = chars.next();
+        let c4 = chars.next();
+        let c5 = chars.next();
+        let c6 = chars.next();
+        let c7 = chars.next();
+        let c8 = chars.next();
+
         Lexer {
-            chars: itertools::multipeek(input.chars()),
-            line: 0,
-            col: 0,
+            chars: chars,
+            c0: c0,
+            c1: c1,
+            c2: c2,
+            c3: c3,
+            c4: c4,
+            c5: c5,
+            c6: c6,
+            c7: c7,
+            c8: c8,
+            position: 0,
         }
+    }
+}
+
+impl<'input> Lexer<'input> {
+    fn shift(&mut self, n: usize) -> (usize, usize) {
+        let start = self.position;
+        for _ in 0..n {
+            self.c0 = self.c1;
+            self.c1 = self.c2;
+            self.c2 = self.c3;
+            self.c3 = self.c4;
+            self.c4 = self.c5;
+            self.c5 = self.c6;
+            self.c6 = self.c7;
+            self.c7 = self.c8;
+            self.c8 = self.chars.next();
+            self.position += 1;
+        }
+        let end = self.position;
+        return (start, end);
     }
 }
 
@@ -41,586 +84,176 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            // VC Merge Conflict
-            // tokenize(("<<<<<<<" ++ _) = Original, Line, 1, _Scope, Tokens) ->
-            if self.col == 0
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('<')
+            if (
+                self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6, self.c7, self.c8,
+            ) == (
+                Some('d'),
+                Some('e'),
+                Some('f'),
+                Some('m'),
+                Some('o'),
+                Some('d'),
+                Some('u'),
+                Some('l'),
+                Some('e'),
+            ) {
+                let (start, end) = self.shift(9);
+                return Some(Ok((start, Tok::Defmodule, end)));
+            }
+
+            if (self.c0, self.c1, self.c2, self.c3) == (Some('d'), Some('e'), Some('f'), Some('p'))
             {
-                self.consume(7);
-                self.consume_to_eol();
-                return Some(Err(LexicalError::VersionControlMarker));
+                let (start, end) = self.shift(4);
+                return Some(Ok((start, Tok::Defp, end)));
             }
-            self.chars.reset_peek();
 
-            // Base integers
-            // tokenize([$0, $x, H | T], Line, Column, Scope, Tokens) when ?is_hex(H) ->
-            if self.match_char('0') && self.match_char('x') && self.match_fn(&|ch| ch.is_digit(16))
-            {
-                self.consume(2);
-
-                let digits: String = self.chars.take_while_ref(|c| c.is_digit(16)).collect();
-                self.col += digits.len() as u32;
-                let val: BigInt = BigInt::from_str_radix(&digits, 16).unwrap();
-                return Some(Ok((1, Tok::Int(val), 1)));
+            if (self.c0, self.c1, self.c2) == (Some('d'), Some('e'), Some('f')) {
+                let (start, end) = self.shift(3);
+                return Some(Ok((start, Tok::Def, end)));
             }
-            self.chars.reset_peek();
 
-            // tokenize([$0, $b, H | T], Line, Column, Scope, Tokens) when ?is_bin(H) ->
-            if self.match_char('0') && self.match_char('b') && self.match_fn(&|ch| ch.is_digit(2)) {
-                self.consume(2);
-                let digits: String = self.chars.take_while_ref(|c| c.is_digit(2)).collect();
-                self.col += digits.len() as u32;
-                let val: BigInt = BigInt::from_str_radix(&digits, 2).unwrap();
-                return Some(Ok((1, Tok::Int(val), 1)));
+            if (self.c0, self.c1, self.c2) == (Some('e'), Some('n'), Some('d')) {
+                let (start, end) = self.shift(3);
+                return Some(Ok((start, Tok::End, end)));
             }
-            self.chars.reset_peek();
 
-            // tokenize([$0, $o, H | T], Line, Column, Scope, Tokens) when ?is_octal(H) ->
-            if self.match_char('0') && self.match_char('o') && self.match_fn(&|ch| ch.is_digit(8)) {
-                self.consume(2);
-                let digits: String = self.chars.take_while_ref(|c| c.is_digit(8)).collect();
-                self.col += digits.len() as u32;
-                let val: BigInt = BigInt::from_str_radix(&digits, 8).unwrap();
-                return Some(Ok((1, Tok::Int(val), 1)));
+            if (self.c0, self.c1) == (Some('d'), Some('o')) {
+                let (start, end) = self.shift(2);
+                return Some(Ok((start, Tok::Do, end)));
             }
-            self.chars.reset_peek();
 
-            // Comments
+            if self.c0.map_or(false, |c| c.is_uppercase()) {
+                let mut name: Vec<char> = vec![];
+                let start = self.position;
+                while self.c0.map_or(false, |c| is_valid_module_name_char(&c)) {
+                    name.push(self.c0.unwrap());
+                    self.shift(1);
+                }
+                let end = self.position;
+                return Some(Ok((
+                    start,
+                    Tok::ModName {
+                        name: name.iter().collect(),
+                    },
+                    end,
+                )));
+            }
 
-            // tokenize([$# | String], Line, Column, Scope, Tokens) ->
-            if self.match_char('#') {
-                self.consume(1);
-                self.consume_to_eol();
+            if self.c0.map_or(false, |c| c.is_lowercase()) {
+                let mut name: Vec<char> = vec![];
+                let start = self.position;
+                while self.c0.map_or(false, |c| is_valid_function_name_char(&c)) {
+                    name.push(self.c0.unwrap());
+                    self.shift(1);
+                }
+                let end = self.position;
+                return Some(Ok((
+                    start,
+                    Tok::FuncName {
+                        name: name.iter().collect(),
+                    },
+                    end,
+                )));
+            }
+
+            if self.c0 == Some(' ') || self.c0 == Some('\n') {
+                self.shift(1);
                 continue;
             }
-            self.chars.reset_peek();
 
-            // Sigils
-
-            // tokenize([$~, S, H, H, H | T] = Original, Line, Column, Scope, Tokens) when ?is_quote(H), ?is_upcase(S) orelse ?is_downcase(S) ->
-            if self.match_char('~') {
-                if let Some(&s) = &self.chars.peek() {
-                    if let Some(&h1) = &self.chars.peek() {
-                        if let Some(&h2) = &self.chars.peek() {
-                            if let Some(&h3) = &self.chars.peek() {
-                                if s.is_ascii_alphabetic()
-                                    && is_quote(&h1)
-                                    && is_quote(&h2)
-                                    && is_quote(&h3)
-                                    && h1 == h2
-                                    && h2 == h3
-                                {
-                                    self.consume(5);
-                                    // TODO: extract_heredoc_with_interpolation...
-                                    return None;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            // tokenize([$~, S, H | T] = Original, Line, Column, Scope, Tokens) when ?is_sigil(H), ?is_upcase(S) orelse ?is_downcase(S) ->
-            if self.match_char('~') {
-                if let Some(&s) = &self.chars.peek() {
-                    if let Some(&h) = &self.chars.peek() {
-                        if s.is_ascii_alphabetic() && is_sigil(&h) {
-                            self.consume(3);
-                            // TODO: elixir_interpolation:extract
-                            return None;
-                        }
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            // tokenize([$~, S, H | _] = Original, Line, Column, _Scope, Tokens) when ?is_upcase(S) orelse ?is_downcase(S) ->
-            if self.match_char('~') {
-                if let Some(&s) = &self.chars.peek() {
-                    if let Some(&_h) = &self.chars.peek() {
-                        if s.is_ascii_alphabetic() {
-                            self.consume(3);
-                            return Some(Err(LexicalError::InvalidSigil));
-                        }
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            // Char tokens
-            // tokenize([$?, $\\, H | T], Line, Column, Scope, Tokens) ->
-            if self.match_char('?') && self.match_char('\\') {
-                if let Some(&_h) = self.chars.peek() {
-                    // TODO: elixir_interpolation:unescape_map(H)
-                    // return Tok::Char..
-                    return None;
-                }
-            }
-            self.chars.reset_peek();
-
-            // tokenize([$?, Char | T], Line, Column, Scope, Tokens) ->
-            if self.match_char('?') {
-                if let Some(&ch) = self.chars.peek() {
-                    return Some(Ok((1, Tok::Char(ch), 1)));
-                }
-            }
-            self.chars.reset_peek();
-
-            // Heredocs
-
-            // tokenize("\"\"\"" ++ T, Line, Column, Scope, Tokens) ->
-            if self.match_char('"') && self.match_char('"') && self.match_char('"') {
-                self.consume(3);
-                // TODO: andle_heredocs(T, Line, Column, $", Scope, Tokens);
+            if self.c0 == None {
                 return None;
             }
-            self.chars.reset_peek();
 
-            // tokenize("'''" ++ T, Line, Column, Scope, Tokens) ->
-            if self.match_char('\'') && self.match_char('\'') && self.match_char('\'') {
-                self.consume(3);
-                // TODO: handle_heredocs(T, Line, Column, $', Scope, Tokens);
-            }
-            self.chars.reset_peek();
-
-            // Strings
-
-            // tokenize([$" | T], Line, Column, Scope, Tokens) ->
-            if self.match_char('"') {
-                self.consume(1);
-                // TODO: handle_strings(T, Line, Column + 1, $", Scope, Tokens);
-            }
-            self.chars.reset_peek();
-
-            // tokenize([$' | T], Line, Column, Scope, Tokens) ->
-            if self.match_char('\'') {
-                self.consume(1);
-                // TODO: handle_strings(T, Line, Column + 1, $', Scope, Tokens);
-            }
-            self.chars.reset_peek();
-
-            // Operator atoms
-
-            // tokenize("...:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
-            if self.match_char('.')
-                && self.match_char('.')
-                && self.match_char('.')
-                && self.match_char(':')
-                && self.match_fn(&|c| is_space(c))
-            {
-                self.consume(4);
-                return Some(Ok((1, Tok::KwIdentifier("...".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize("<<>>:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
-            if self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('>')
-                && self.match_char('>')
-                && self.match_char(':')
-                && self.match_fn(&|c| is_space(c))
-            {
-                self.consume(5);
-                return Some(Ok((1, Tok::KwIdentifier("<<>>".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize("%{}:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
-            if self.match_char('%')
-                && self.match_char('{')
-                && self.match_char('}')
-                && self.match_char(':')
-                && self.match_fn(&|c| is_space(c))
-            {
-                self.consume(4);
-                return Some(Ok((1, Tok::KwIdentifier("%{}".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize("%:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
-            if self.match_char('%') && self.match_char(':') && self.match_fn(&|c| is_space(c)) {
-                self.consume(2);
-                return Some(Ok((1, Tok::KwIdentifier("%".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize("{}:" ++ Rest, Line, Column, Scope, Tokens) when ?is_space(hd(Rest)) ->
-            if self.match_char('{')
-                && self.match_char('}')
-                && self.match_char(':')
-                && self.match_fn(&|c| is_space(c))
-            {
-                self.consume(3);
-                return Some(Ok((1, Tok::KwIdentifier("{}".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize(":..." ++ Rest, Line, Column, Scope, Tokens) ->
-            if self.match_char(':')
-                && self.match_char('.')
-                && self.match_char('.')
-                && self.match_char('.')
-            {
-                self.consume(4);
-                return Some(Ok((1, Tok::Atom("...".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize(":<<>>" ++ Rest, Line, Column, Scope, Tokens) ->
-            if self.match_char(':')
-                && self.match_char('<')
-                && self.match_char('<')
-                && self.match_char('>')
-                && self.match_char('>')
-            {
-                self.consume(5);
-                return Some(Ok((1, Tok::Atom("<<>>".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize(":%{}" ++ Rest, Line, Column, Scope, Tokens) ->
-            if self.match_char(':')
-                && self.match_char('%')
-                && self.match_char('{')
-                && self.match_char('}')
-            {
-                self.consume(4);
-                return Some(Ok((1, Tok::Atom("%{}".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize(":%" ++ Rest, Line, Column, Scope, Tokens) ->
-            if self.match_char(':') && self.match_char('%') {
-                self.consume(2);
-                return Some(Ok((1, Tok::Atom("%".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // tokenize(":{}" ++ Rest, Line, Column, Scope, Tokens) ->
-            if self.match_char(':') && self.match_char('{') && self.match_char('}') {
-                self.consume(3);
-                return Some(Ok((1, Tok::Atom("{}".to_string()), 1)));
-            }
-            self.chars.reset_peek();
-
-            // Three Token Operators
-
-            // tokenize([$:, T1, T2, T3 | Rest], Line, Column, Scope, Tokens) when
-            // ?unary_op3(T1, T2, T3); ?comp_op3(T1, T2, T3); ?and_op3(T1, T2, T3); ?or_op3(T1, T2, T3);
-            // ?arrow_op3(T1, T2, T3); ?three_op(T1, T2, T3) ->
-            if self.match_char(':') {
-                if let Some(&t1) = self.chars.peek() {
-                    if let Some(&t2) = self.chars.peek() {
-                        if let Some(&t3) = self.chars.peek() {
-                            if is_unary_op3(&t1, &t2, &t3)
-                                || is_comp_op3(&t1, &t2, &t3)
-                                || is_and_op3(&t1, &t2, &t3)
-                                || is_or_op3(&t1, &t2, &t3)
-                                || is_arrow_op3(&t1, &t2, &t3)
-                                || is_three_op(&t1, &t2, &t3)
-                            {
-                                self.consume(4);
-                                return Some(Ok((
-                                    (self.col - 4) as usize,
-                                    Tok::Atom([t1, t2, t3].into_iter().collect()),
-                                    self.col as usize,
-                                )));
-                            }
-                        }
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            // Two Token Operators
-            // tokenize([$:, T1, T2 | Rest], Line, Column, Scope, Tokens) when
-            //     ?comp_op2(T1, T2); ?rel_op2(T1, T2); ?and_op(T1, T2); ?or_op(T1, T2);
-            //     ?arrow_op(T1, T2); ?in_match_op(T1, T2); ?two_op(T1, T2); ?list_op(T1, T2);
-            // ?stab_op(T1, T2); ?type_op(T1, T2) ->
-            if self.match_char(':') {
-                if let Some(&t1) = self.chars.peek() {
-                    if let Some(&t2) = self.chars.peek() {
-                        if is_comp_op2(&t1, &t2)
-                            || is_rel_op2(&t1, &t2)
-                            || is_and_op(&t1, &t2)
-                            || is_or_op(&t1, &t2)
-                            || is_arrow_op(&t1, &t2)
-                            || is_in_match_op(&t1, &t2)
-                            || is_two_op(&t1, &t2)
-                            || is_list_op(&t1, &t2)
-                            || is_stab_op(&t1, &t2)
-                            || is_type_op(&t1, &t2)
-                        {
-                            self.consume(3);
-                            return Some(Ok((
-                                (self.col - 3) as usize,
-                                Tok::Atom([t1, t2].into_iter().collect()),
-                                self.col as usize,
-                            )));
-                        }
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            //  ## Single Token Operators
-            // tokenize([$:, T | Rest], Line, Column, Scope, Tokens) when
-            //     ?at_op(T); ?unary_op(T); ?capture_op(T); ?dual_op(T); ?mult_op(T);
-            // ?rel_op(T); ?match_op(T); ?pipe_op(T); T == $. ->
-            if self.match_char(':') {
-                if let Some(&t) = self.chars.peek() {
-                    if is_at_op(&t)
-                        || is_unary_op(&t)
-                        || is_capture_op(&t)
-                        || is_dual_op(&t)
-                        || is_mult_op(&t)
-                        || is_rel_op(&t)
-                        || is_match_op(&t)
-                        || is_pipe_op(&t)
-                        || &t == &'.'
-                    {
-                        self.consume(2);
-                        return Some(Ok((
-                            (self.col - 2) as usize,
-                            Tok::Atom([t].into_iter().collect()),
-                            self.col as usize,
-                        )));
-                    }
-                }
-            }
-            self.chars.reset_peek();
-
-            // flag for testing
-            if self.match_char('*') {
-                self.consume(1);
-                return Some(Ok((1, Tok::Star, 1)));
-            }
-            self.chars.reset_peek();
-
-            return None;
+            self.shift(1);
         }
     }
 }
 
-impl<'input> Lexer<'input> {
-    fn consume(&mut self, n: u32) {
-        for _ in 0..n {
-            self.chars.next();
-        }
-        self.col += n;
-        self.chars.reset_peek();
-    }
-
-    fn consume_to_eol(&mut self) {
-        loop {
-            match &self.chars.next() {
-                Some('\n') => {
-                    self.col = 0;
-                    self.line += 1;
-                    break;
-                }
-                None => {
-                    self.col += 1;
-                    break;
-                }
-                _ => {
-                    self.col += 1;
-                    continue;
-                }
-            }
-        }
-    }
-
-    fn match_char(&mut self, c: char) -> bool {
-        self.chars.peek() == Some(&c)
-    }
-
-    fn match_fn(&mut self, f: &Fn(&char) -> bool) -> bool {
-        self.chars.peek().map_or(false, |c| f(c))
-    }
+fn is_valid_module_name_char(c: &char) -> bool {
+    c.is_alphanumeric() || c == &'.' || c == &'_'
 }
 
-fn is_quote(c: &char) -> bool {
-    c == &'\'' || c == &'"'
-}
-
-fn is_sigil(c: &char) -> bool {
-    c == &'/'
-        || c == &'<'
-        || c == &'"'
-        || c == &'\''
-        || c == &'['
-        || c == &'('
-        || c == &'{'
-        || c == &'|'
-}
-
-fn is_horizontal_space(s: &char) -> bool {
-    s == &' ' || s == &'\t'
-}
-
-fn is_vertical_space(s: &char) -> bool {
-    s == &'\r' || s == &'\n'
-}
-
-fn is_space(s: &char) -> bool {
-    is_horizontal_space(s) || is_vertical_space(s)
-}
-
-fn is_comp_op2(t1: &char, t2: &char) -> bool {
-    (t1 == &'=' && t2 == &'=') || (t1 == &'=' && t2 == &'~') || (t1 == &'!' && t2 == &'=')
-}
-
-fn is_rel_op2(t1: &char, t2: &char) -> bool {
-    (t1 == &'<' && t2 == &'=') || (t1 == &'>' && t2 == &'~')
-}
-
-fn is_and_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'&' && t2 == &'&')
-}
-
-fn is_or_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'|' && t2 == &'|')
-}
-
-fn is_arrow_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'|' && t2 == &'>') || (t1 == &'~' && t2 == &'>') || (t1 == &'<' && t2 == &'~')
-}
-
-fn is_in_match_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'<' && t2 == &'-') || (t1 == &'\\' && t2 == &'\\')
-}
-
-fn is_two_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'<' && t2 == &'>') || (t1 == &'.' && t2 == &'.')
-}
-
-fn is_list_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'+' && t2 == &'+') || (t1 == &'-' && t2 == &'-')
-}
-
-fn is_stab_op(t1: &char, t2: &char) -> bool {
-    (t1 == &'-' && t2 == &'>')
-}
-
-fn is_type_op(t1: &char, t2: &char) -> bool {
-    (t1 == &':' && t2 == &':')
-}
-
-fn is_unary_op3(t1: &char, t2: &char, t3: &char) -> bool {
-    t1 == &'~' && t2 == &'~' && t3 == &'~'
-}
-
-fn is_comp_op3(t1: &char, t2: &char, t3: &char) -> bool {
-    (t1 == &'=' && t2 == &'=' && t3 == &'=') || (t1 == &'!' && t2 == &'=' && t3 == &'=')
-}
-
-fn is_and_op3(t1: &char, t2: &char, t3: &char) -> bool {
-    t1 == &'&' && t2 == &'&' && t3 == &'&'
-}
-
-fn is_or_op3(t1: &char, t2: &char, t3: &char) -> bool {
-    t1 == &'|' && t2 == &'|' && t3 == &'|'
-}
-
-fn is_arrow_op3(t1: &char, t2: &char, t3: &char) -> bool {
-    (t1 == &'<' && t2 == &'<' && t3 == &'<')
-        || (t1 == &'>' && t2 == &'>' && t3 == &'>')
-        || (t1 == &'~' && t2 == &'>' && t3 == &'>')
-        || (t1 == &'<' && t2 == &'<' && t3 == &'~')
-        || (t1 == &'<' && t2 == &'~' && t3 == &'>')
-        || (t1 == &'<' && t2 == &'|' && t3 == &'>')
-}
-
-fn is_three_op(t1: &char, t2: &char, t3: &char) -> bool {
-    t1 == &'^' && t2 == &'^' && t3 == &'^'
-}
-
-fn is_at_op(t: &char) -> bool {
-    t == &'@'
-}
-
-fn is_unary_op(t: &char) -> bool {
-    t == &'!' || t == &'^'
-}
-
-fn is_capture_op(t: &char) -> bool {
-    t == &'&'
-}
-
-fn is_dual_op(t: &char) -> bool {
-    t == &'+' || t == &'-'
-}
-
-fn is_mult_op(t: &char) -> bool {
-    t == &'*' || t == &'/'
-}
-
-fn is_rel_op(t: &char) -> bool {
-    t == &'<' || t == &'>'
-}
-
-fn is_match_op(t: &char) -> bool {
-    t == &'='
-}
-
-fn is_pipe_op(t: &char) -> bool {
-    t == &'|'
+fn is_valid_function_name_char(c: &char) -> bool {
+    c.is_alphanumeric() || c == &'_' || c == &'?' || c == &'!'
 }
 
 #[test]
 fn lex1() {
-    let mut lexer = Lexer::new("<<<<<<< VC conflict\n*");
-    assert!(lexer.next() == Some(Err(LexicalError::VersionControlMarker)));
-    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-    assert!(lexer.next() == None);
+    let mut lexer = Lexer::new("defmodule Foo.Baz do\n  def bar? do\n  end\nend\n");
+    assert_eq!(lexer.next(), Some(Ok((0, Tok::Defmodule, 9))));
+    assert_eq!(
+        lexer.next(),
+        Some(Ok((
+            10,
+            Tok::ModName {
+                name: "Foo.Baz".to_string()
+            },
+            17
+        )))
+    );
+    assert_eq!(lexer.next(), Some(Ok((18, Tok::Do, 20))));
+    assert_eq!(lexer.next(), Some(Ok((23, Tok::Def, 26))));
+    assert_eq!(
+        lexer.next(),
+        Some(Ok((
+            27,
+            Tok::FuncName {
+                name: "bar?".to_string()
+            },
+            31
+        )))
+    );
+    assert_eq!(lexer.next(), Some(Ok((32, Tok::Do, 34))));
+    assert_eq!(lexer.next(), Some(Ok((37, Tok::End, 40))));
+    assert_eq!(lexer.next(), Some(Ok((41, Tok::End, 44))));
 }
 
-#[test]
-fn lex2() {
-    let mut lexer = Lexer::new("0xf1A*0b110*0o73*");
-    assert!(lexer.next() == Some(Ok((1, Tok::Int(0xf1a.to_bigint().unwrap()), 1))));
-    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-    assert!(lexer.next() == Some(Ok((1, Tok::Int(0b110.to_bigint().unwrap()), 1))));
-    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-    assert!(lexer.next() == Some(Ok((1, Tok::Int(0o73.to_bigint().unwrap()), 1))));
-    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-}
+// #[test]
+// fn lex1() {
+//     let mut lexer = Lexer::new("<<<<<<< VC conflict\n*");
+//     assert!(lexer.next() == Some(Err(LexicalError::VersionControlMarker)));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+//     assert!(lexer.next() == None);
+// }
 
-#[test]
-fn lex3() {
-    let mut lexer = Lexer::new("# this is a comment\n*");
-    assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-}
+// #[test]
+// fn lex2() {
+//     let mut lexer = Lexer::new("0xf1A*0b110*0o73*");
+//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0xf1a.to_bigint().unwrap()), 1))));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0b110.to_bigint().unwrap()), 1))));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0o73.to_bigint().unwrap()), 1))));
+//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+// }
 
-#[test]
-fn consume() {
-    let mut lexer = Lexer::new("123456");
-    assert!(lexer.chars.peek() == Some(&'1'));
-    lexer.chars.reset_peek();
-    lexer.consume(2);
-    assert!(lexer.chars.peek() == Some(&'3'));
-    lexer.consume(2);
-    assert!(lexer.chars.peek() == Some(&'5'));
-}
+// #[test]
+// fn lex3() {
+//     let mut lexer = Lexer::new("# this is a comment\n*");
+//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
+// }
 
-#[test]
-fn match_char() {
-    let mut lexer = Lexer::new("abc");
-    assert!(lexer.match_char('a'));
-    assert!(lexer.match_char('b'));
-}
+// #[test]
+// fn consume() {
+//     let mut lexer = Lexer::new("123456");
+//     assert!(lexer.chars.peek() == Some(&'1'));
+//     lexer.chars.reset_peek();
+//     lexer.consume(2);
+//     assert!(lexer.chars.peek() == Some(&'3'));
+//     lexer.consume(2);
+//     assert!(lexer.chars.peek() == Some(&'5'));
+// }
 
-#[test]
-fn match_fn() {
-    let mut lexer = Lexer::new("abc");
-    assert!(lexer.match_fn(&|ch| ch == &'a'));
-}
+// #[test]
+// fn match_char() {
+//     let mut lexer = Lexer::new("abc");
+//     assert!(lexer.match_char('a'));
+//     assert!(lexer.match_char('b'));
+// }
+
+// #[test]
+// fn match_fn() {
+//     let mut lexer = Lexer::new("abc");
+//     assert!(lexer.match_fn(&|ch| ch == &'a'));
+// }
