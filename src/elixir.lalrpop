@@ -1,10 +1,33 @@
-use std::str::FromStr;
+use crate::ast::Expr;
+use crate::lexer::{LexicalError, Tok};
 
 grammar;
 
-pub Term: i32 = {
-    <n:Num> => n,
-    "(" <t:Term> ")" => t,
+pub DefModule: Expr = {
+  "defmodule" <m:modname> "do" <es:Expr*> "end" => { 
+    Expr::DefModule{name: m, exprs: es} 
+  }
 };
 
-Num: i32 = <s:r"[0-9]+"> => i32::from_str(s).unwrap();
+Expr: Expr = {
+  "def" <f:funcname> "do" <es:Expr*> "end" => { Expr::DefFunc{name: f, exprs: es}},
+  "use" <m:modname> => { Expr::Use{modname: m}},
+  "true" => Expr::True
+}
+
+extern {
+  type Location = usize;
+  type Error = LexicalError;
+
+  enum Tok {
+    "def" => Tok::Def,
+    "defmodule" => Tok::DefModule,
+    "defp" => Tok::Defp,
+    "do" => Tok::Do,
+    "end" => Tok::End,
+    "true" => Tok::True,
+    "use" => Tok::Use,
+    modname => Tok::ModName { name: <String> },
+    funcname => Tok::FuncName { name: <String> }
+  }
+}

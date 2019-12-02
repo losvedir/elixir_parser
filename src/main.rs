@@ -1,21 +1,40 @@
-// #[macro_use]
-extern crate itertools;
+#[macro_use]
 extern crate lalrpop_util;
-extern crate num_bigint;
-extern crate num_traits;
-// lalrpop_mod!(pub elixir); // synthesized by LALRPOP
+lalrpop_mod!(pub elixir); // synthesized by LALRPOP
 
-pub mod lexer;
+#[cfg(test)]
+#[macro_use]
+extern crate assert_matches;
 
-// use std::fs;
+mod ast;
+mod lexer;
+
+#[cfg(test)]
+use std::fs;
 
 fn main() {
     println!("Hello, world!");
+    let lexer = lexer::Lexer::new("defmodule Foo do def bar do end end");
+    match elixir::DefModuleParser::new().parse(lexer) {
+        Ok(res) => {
+            dbg!(res);
+        }
+        Err(_err) => {}
+    }
 }
 
 #[test]
-fn calculator1() {
-    // let contents = fs::read_to_string("elixir/simple.ex")
-    //     .expect("Something went wrong reading the file");
-    // assert!(elixir::TermParser::new().parse(&contents).is_ok());
+fn parse1() {
+    let elixir1 = fs::read_to_string("elixir/simple.ex").expect("elixir/simple.ex");
+    let lexer = lexer::Lexer::new(&elixir1);
+    assert_eq!(
+        elixir::DefModuleParser::new().parse(lexer),
+        Ok(ast::Expr::DefModule {
+            name: "Foo".to_string(),
+            exprs: vec![ast::Expr::DefFunc {
+                name: "bar".to_string(),
+                exprs: vec![ast::Expr::True]
+            }]
+        })
+    )
 }

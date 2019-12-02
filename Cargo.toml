@@ -6,6 +6,9 @@ authors = ["Gabe Durazo <gabe@durazo.us>"]
 [build-dependencies]
 lalrpop = "0.16.2"
 
+[dev-dependencies]
+assert_matches = "1.2"
+
 [dependencies]
 num-bigint = "0.2.2"
 num-traits = "0.2.2"

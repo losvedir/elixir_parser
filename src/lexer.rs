@@ -4,12 +4,14 @@ pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 #[derive(Clone, PartialEq, Debug)]
 pub enum Tok {
     Def,
-    Defmodule,
+    DefModule,
     Defp,
     Do,
     End,
     ModName { name: String },
     FuncName { name: String },
+    True,
+    Use,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -77,6 +79,85 @@ impl<'input> Lexer<'input> {
         let end = self.position;
         return (start, end);
     }
+
+    fn matches_literal(&mut self, lit: &str) -> Option<(usize, usize)> {
+        let mut chars = lit.chars();
+
+        let (matches, len) = match lit.chars().count() {
+            1 => (chars.next() == self.c0, 1),
+            2 => (chars.next() == self.c0 && chars.next() == self.c1, 2),
+            3 => (
+                chars.next() == self.c0 && chars.next() == self.c1 && chars.next() == self.c2,
+                3,
+            ),
+            4 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3,
+                4,
+            ),
+            5 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3
+                    && chars.next() == self.c4,
+                5,
+            ),
+            6 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3
+                    && chars.next() == self.c4
+                    && chars.next() == self.c5,
+                6,
+            ),
+            7 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3
+                    && chars.next() == self.c4
+                    && chars.next() == self.c5
+                    && chars.next() == self.c6,
+                7,
+            ),
+            8 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3
+                    && chars.next() == self.c4
+                    && chars.next() == self.c5
+                    && chars.next() == self.c6
+                    && chars.next() == self.c7,
+                8,
+            ),
+            9 => (
+                chars.next() == self.c0
+                    && chars.next() == self.c1
+                    && chars.next() == self.c2
+                    && chars.next() == self.c3
+                    && chars.next() == self.c4
+                    && chars.next() == self.c5
+                    && chars.next() == self.c6
+                    && chars.next() == self.c7
+                    && chars.next() == self.c8,
+                9,
+            ),
+            _ => unreachable!(),
+        };
+        if matches {
+            let start = self.position;
+            self.shift(len);
+            let end = self.position;
+            return Some((start, end));
+        } else {
+            return None;
+        }
+    }
 }
 
 impl<'input> Iterator for Lexer<'input> {
@@ -84,42 +165,45 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if (
-                self.c0, self.c1, self.c2, self.c3, self.c4, self.c5, self.c6, self.c7, self.c8,
-            ) == (
-                Some('d'),
-                Some('e'),
-                Some('f'),
-                Some('m'),
-                Some('o'),
-                Some('d'),
-                Some('u'),
-                Some('l'),
-                Some('e'),
-            ) {
-                let (start, end) = self.shift(9);
-                return Some(Ok((start, Tok::Defmodule, end)));
+            if let Some((start, end)) = self.matches_literal("defmodule") {
+                return Some(Ok((start, Tok::DefModule, end)));
             }
 
-            if (self.c0, self.c1, self.c2, self.c3) == (Some('d'), Some('e'), Some('f'), Some('p'))
-            {
-                let (start, end) = self.shift(4);
+            if let Some((start, end)) = self.matches_literal("defp") {
                 return Some(Ok((start, Tok::Defp, end)));
             }
 
-            if (self.c0, self.c1, self.c2) == (Some('d'), Some('e'), Some('f')) {
-                let (start, end) = self.shift(3);
+            if let Some((start, end)) = self.matches_literal("def") {
                 return Some(Ok((start, Tok::Def, end)));
             }
 
-            if (self.c0, self.c1, self.c2) == (Some('e'), Some('n'), Some('d')) {
-                let (start, end) = self.shift(3);
+            if let Some((start, end)) = self.matches_literal("end") {
                 return Some(Ok((start, Tok::End, end)));
             }
 
-            if (self.c0, self.c1) == (Some('d'), Some('o')) {
-                let (start, end) = self.shift(2);
+            if let Some((start, end)) = self.matches_literal("do") {
                 return Some(Ok((start, Tok::Do, end)));
+            }
+
+            if let Some((start, end)) = self.matches_literal("true") {
+                return Some(Ok((start, Tok::True, end)));
+            }
+
+            if let Some((start, end)) = self.matches_literal("use") {
+                return Some(Ok((start, Tok::Use, end)));
+            }
+
+            if let Some((_, _)) = self.matches_literal("#") {
+                while self.c1 != Some('\n') && self.c1 != Some('\r') && self.c1 != None {
+                    self.shift(1);
+                }
+
+                // CLRF (\r\n)
+                if self.c1 == Some('\n') {
+                    self.shift(1);
+                }
+
+                continue;
             }
 
             if self.c0.map_or(false, |c| c.is_uppercase()) {
@@ -156,7 +240,7 @@ impl<'input> Iterator for Lexer<'input> {
                 )));
             }
 
-            if self.c0 == Some(' ') || self.c0 == Some('\n') {
+            if self.c0 == Some(' ') || self.c0 == Some('\n') || self.c0 == Some('\r') {
                 self.shift(1);
                 continue;
             }
@@ -181,7 +265,7 @@ fn is_valid_function_name_char(c: &char) -> bool {
 #[test]
 fn lex1() {
     let mut lexer = Lexer::new("defmodule Foo.Baz do\n  def bar? do\n  end\nend\n");
-    assert_eq!(lexer.next(), Some(Ok((0, Tok::Defmodule, 9))));
+    assert_eq!(lexer.next(), Some(Ok((0, Tok::DefModule, 9))));
     assert_eq!(
         lexer.next(),
         Some(Ok((
@@ -209,51 +293,8 @@ fn lex1() {
     assert_eq!(lexer.next(), Some(Ok((41, Tok::End, 44))));
 }
 
-// #[test]
-// fn lex1() {
-//     let mut lexer = Lexer::new("<<<<<<< VC conflict\n*");
-//     assert!(lexer.next() == Some(Err(LexicalError::VersionControlMarker)));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-//     assert!(lexer.next() == None);
-// }
-
-// #[test]
-// fn lex2() {
-//     let mut lexer = Lexer::new("0xf1A*0b110*0o73*");
-//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0xf1a.to_bigint().unwrap()), 1))));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0b110.to_bigint().unwrap()), 1))));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Int(0o73.to_bigint().unwrap()), 1))));
-//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-// }
-
-// #[test]
-// fn lex3() {
-//     let mut lexer = Lexer::new("# this is a comment\n*");
-//     assert!(lexer.next() == Some(Ok((1, Tok::Star, 1))));
-// }
-
-// #[test]
-// fn consume() {
-//     let mut lexer = Lexer::new("123456");
-//     assert!(lexer.chars.peek() == Some(&'1'));
-//     lexer.chars.reset_peek();
-//     lexer.consume(2);
-//     assert!(lexer.chars.peek() == Some(&'3'));
-//     lexer.consume(2);
-//     assert!(lexer.chars.peek() == Some(&'5'));
-// }
-
-// #[test]
-// fn match_char() {
-//     let mut lexer = Lexer::new("abc");
-//     assert!(lexer.match_char('a'));
-//     assert!(lexer.match_char('b'));
-// }
-
-// #[test]
-// fn match_fn() {
-//     let mut lexer = Lexer::new("abc");
-//     assert!(lexer.match_fn(&|ch| ch == &'a'));
-// }
+#[test]
+fn lex_comments() {
+    let mut lexer = Lexer::new("# this is a comment to end of line\ntrue");
+    assert_matches!(lexer.next(), Some(Ok((_, Tok::True, _))));
+}
