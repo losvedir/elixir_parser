@@ -4,14 +4,18 @@ use crate::lexer::{LexicalError, Tok};
 grammar;
 
 pub DefModule: Expr = {
-  "defmodule" <m:modname> "do" <es:Expr*> "end" => { 
-    Expr::DefModule{name: m, exprs: es} 
+  "defmodule" <m:modname> "do" <ms:ModStatement*> "end" => { 
+    Expr::DefModule{name: m, exprs: ms} 
   }
 };
 
-Expr: Expr = {
-  "def" <f:funcname> "do" <es:Expr*> "end" => { Expr::DefFunc{name: f, exprs: es}},
-  "use" <m:modname> => { Expr::Use{modname: m}},
+ModStatement: Expr = {
+  "def" <f:funcname> "do" <es:FuncExpr*> "end" => { Expr::DefFunc{name: f, exprs: es}},
+  "defp" <f:funcname> "do" <es:FuncExpr*> "end" => { Expr::DefFunc{name: f, exprs: es}},
+  "use" <m:modname> => { Expr::Use{name: m}},
+}
+
+FuncExpr: Expr = {
   "true" => Expr::True
 }
 

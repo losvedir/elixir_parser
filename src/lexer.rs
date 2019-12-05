@@ -12,6 +12,8 @@ pub enum Tok {
     FuncName { name: String },
     True,
     Use,
+    Lbrace,
+    Rbrace,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -165,6 +167,12 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
+            if let Some((start, end)) = self.matches_literal("[") {
+                return Some(Ok((start, Tok::Lbrace, end)));
+            }
+            if let Some((start, end)) = self.matches_literal("]") {
+                return Some(Ok((start, Tok::Rbrace, end)));
+            }
             if let Some((start, end)) = self.matches_literal("defmodule") {
                 return Some(Ok((start, Tok::DefModule, end)));
             }
